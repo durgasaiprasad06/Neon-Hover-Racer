@@ -1,6 +1,6 @@
 # Neon Hover Racer 
 <p align="center">
-<img src="assets/logo.jpg" alt="Neon Hover Racer Logo" width="100"/>
+<img src="assets/logo.jpg" alt="Neon Hover Racer Logo" width="200"/>
 </p>
 
 ## Features
