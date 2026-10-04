@@ -1,0 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Orbitron', sans-serif; }
+
+body::after {
+    content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    z-index: 2; background-size: 100% 2px, 3px 100%; pointer-events: none;
+}
+
+#game-ui { position: absolute; top: 20px; left: 20px; color: #fff; z-index: 10; pointer-events: none; text-transform: uppercase; }
+.glass-panel {
+    background: rgba(0, 20, 40, 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 12px;
+    padding: 20px 30px;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 255, 255, 0.2), inset 0 0 15px rgba(0,255,255,0.1);
+}
+#score-display { font-size: 28px; font-weight: bold; color: #00ffff; text-shadow: 0 0 15px #00ffff, 0 0 30px #00ffff; margin-bottom: 5px; }
+#speed-display { font-size: 20px; color: #ff00ff; text-shadow: 0 0 10px #ff00ff; letter-spacing: 2px; }
+
+#game-over {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: radial-gradient(circle, rgba(0,0,0,0.7) 0%, rgba(20,0,0,0.9) 100%);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    color: #fff; z-index: 20; display: none; backdrop-filter: blur(8px);
+    animation: fadeIn 0.5s ease-out;
+}
+@keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+#game-over h1 { font-size: 64px; color: #ff0055; text-shadow: 0 0 20px #ff0055, 0 0 40px #ff0055; margin-bottom: 30px; letter-spacing: 5px; text-align: center; }
+button {
+    padding: 15px 40px; font-size: 22px; background: rgba(0, 255, 255, 0.1);
+    color: #00ffff; border: 2px solid #00ffff; border-radius: 8px; cursor: pointer;
+    text-transform: uppercase; letter-spacing: 3px; font-family: 'Orbitron', sans-serif;
+    font-weight: bold; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.4), inset 0 0 10px rgba(0,255,255,0.2);
+    pointer-events: auto; outline: none;
+}
+button:hover { background: #00ffff; color: #000; box-shadow: 0 0 40px #00ffff, 0 0 80px #00ffff; transform: translateY(-3px) scale(1.05); }
+button:active { transform: translateY(1px) scale(0.95); }

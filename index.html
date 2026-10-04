@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Hover Racer</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Orbitron', sans-serif; }
+        
+        body::after {
+            content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 2; background-size: 100% 2px, 3px 100%; pointer-events: none;
+        }
+
+        #game-ui { position: absolute; top: 20px; left: 20px; color: #fff; z-index: 10; pointer-events: none; text-transform: uppercase; }
+        .glass-panel {
+            background: rgba(0, 20, 40, 0.4);
+            backdrop-filter: blur(12px);
+            border-radius: 12px;
+            padding: 20px 30px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 255, 255, 0.2), inset 0 0 15px rgba(0,255,255,0.1);
+        }
+        #score-display { font-size: 28px; font-weight: bold; color: #00ffff; text-shadow: 0 0 15px #00ffff, 0 0 30px #00ffff; margin-bottom: 5px; }
+        #speed-display { font-size: 20px; color: #ff00ff; text-shadow: 0 0 10px #ff00ff; letter-spacing: 2px; }
+        
+        #game-over {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, rgba(0,0,0,0.7) 0%, rgba(20,0,0,0.9) 100%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: #fff; z-index: 20; display: none; backdrop-filter: blur(8px);
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        
+        #game-over h1 { font-size: 64px; color: #ff0055; text-shadow: 0 0 20px #ff0055, 0 0 40px #ff0055; margin-bottom: 20px; letter-spacing: 5px; text-align: center; }
+        #final-score { font-size: 36px; color: #fff; margin-bottom: 10px; font-weight: bold; text-shadow: 0 0 10px #fff; }
+        #high-score { font-size: 36px; color: #ff00ff; margin-bottom: 40px; font-weight: bold; text-shadow: 0 0 15px #ff00ff; }
+        button {
+            padding: 15px 40px; font-size: 22px; background: rgba(0, 255, 255, 0.1);
+            color: #00ffff; border: 2px solid #00ffff; border-radius: 8px; cursor: pointer;
+            text-transform: uppercase; letter-spacing: 3px; font-family: 'Orbitron', sans-serif;
+            font-weight: bold; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.4), inset 0 0 10px rgba(0,255,255,0.2);
+            pointer-events: auto; outline: none;
+        }
+        button:hover { background: #00ffff; color: #000; box-shadow: 0 0 40px #00ffff, 0 0 80px #00ffff; transform: translateY(-3px) scale(1.05); }
+    </style>
+</head>
+<body>
+    <div id="game-ui">
+        <div class="glass-panel">
+            <div id="score-display">SCORE: 0</div>
+            <div id="speed-display">SPEED: 0 KM/H</div>
+        </div>
+    </div>
+    <div id="game-over">
+        <h1>SYSTEM FAILURE</h1>
+        <div id="final-score">SCORE: 0</div>
+        <div id="high-score">HIGH SCORE: 0</div>
+        <button id="restart-btn">REBOOT SYSTEM</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x02000a);
+        scene.fog = new THREE.FogExp2(0x02000a, 0.004);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xff00aa, 1.5);
+        dirLight.position.set(-50, 100, 50);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+        scene.add(dirLight.target);
+
+        const gridHelper = new THREE.GridHelper(2000, 100, 0xff00ff, 0x00ffff);
+        gridHelper.position.y = 0;
+        scene.add(gridHelper);
+
+        const boundaryGroup = new THREE.Group();
+        scene.add(boundaryGroup);
+        const pillarGeo = new THREE.BoxGeometry(2, 6, 10); // 10 units long with spaces
+        const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xaaaaaa, roughness: 0.1, metalness: 0.3 });
+        
+        for(let i=0; i<40; i++) {
+            const z = -i * 30; // 20 units of space between each 10-unit pillar
+            const lPillar = new THREE.Mesh(pillarGeo, whiteMat);
+            lPillar.position.set(-45, 3, z);
+            boundaryGroup.add(lPillar);
+            
+            const rPillar = new THREE.Mesh(pillarGeo, whiteMat);
+            rPillar.position.set(45, 3, z);
+            boundaryGroup.add(rPillar);
+        }
+
+        // 3D Trucks on the sides
+        const truckGroup = new THREE.Group();
+        scene.add(truckGroup);
+
+        const trailerGeo = new THREE.BoxGeometry(5, 7, 20);
+        const cabGeo = new THREE.BoxGeometry(5, 5, 6);
+        const truckWheelGeo = new THREE.CylinderGeometry(1.5, 1.5, 1.0, 16);
+        
+        const trailerMat = new THREE.MeshStandardMaterial({ color: 0xaa4400, metalness: 0.4, roughness: 0.6 });
+        const cabMat = new THREE.MeshStandardMaterial({ color: 0x222233, metalness: 0.9, roughness: 0.1 });
+        const tireMat = new THREE.MeshStandardMaterial({ color: 0x050505 });
+        const neonGrillMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2 });
+
+        for(let i=0; i<16; i++) {
+            const truck = new THREE.Group();
+            
+            const trailer = new THREE.Mesh(trailerGeo, trailerMat);
+            trailer.position.set(0, 5, 5);
+            truck.add(trailer);
+            
+            const cab = new THREE.Mesh(cabGeo, cabMat);
+            cab.position.set(0, 4, -8);
+            truck.add(cab);
+
+            const grill = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 0.2), neonGrillMat);
+            grill.position.set(0, 3, -11.1);
+            truck.add(grill);
+            
+            const wPositions = [ [3, 1.5, -8], [-3, 1.5, -8], [3, 1.5, 0], [-3, 1.5, 0], [3, 1.5, 10], [-3, 1.5, 10] ];
+            wPositions.forEach(p => {
+                const w = new THREE.Mesh(truckWheelGeo, tireMat);
+                w.rotation.z = Math.PI / 2;
+                w.position.set(...p);
+                truck.add(w);
+            });
+
+            // Alternate sides: left (-55) and right (55)
+            const side = (i % 2 === 0) ? -1 : 1;
+            const z = -i * 150; // Spaced every 150 units
+            
+            truck.position.set(side * 55, 0, z);
+            truckGroup.add(truck);
+        }
+
+        // 3D Ghosts
+        const ghostGroup = new THREE.Group();
+        scene.add(ghostGroup);
+        const ghostHeadGeo = new THREE.SphereGeometry(2, 16, 16);
+        const ghostBodyGeo = new THREE.CylinderGeometry(2, 3, 4, 16);
+        const ghostMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x5555ff, transparent: true, opacity: 0.6 });
+
+        for(let i=0; i<15; i++) {
+            const ghost = new THREE.Group();
+            
+            const head = new THREE.Mesh(ghostHeadGeo, ghostMat);
+            head.position.y = 2;
+            ghost.add(head);
+            
+            const body = new THREE.Mesh(ghostBodyGeo, ghostMat);
+            ghost.add(body);
+            
+            const eyeGeo = new THREE.SphereGeometry(0.4, 8, 8);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+            eyeL.position.set(-0.8, 2.2, -1.8);
+            ghost.add(eyeL);
+            const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+            eyeR.position.set(0.8, 2.2, -1.8);
+            ghost.add(eyeR);
+
+            const side = Math.random() > 0.5 ? 1 : -1;
+            ghost.position.set(side * (55 + Math.random() * 20), 10 + Math.random() * 10, -300 - Math.random() * 1200);
+            ghost.rotation.y = (side === 1) ? -Math.PI/2 : Math.PI/2;
+            
+            ghostGroup.add(ghost);
+        }
+
+        const starGeo = new THREE.BufferGeometry();
+        const starCount = 3000;
+        const starPos = new Float32Array(starCount * 3);
+        for(let i=0; i < starCount * 3; i++) {
+            starPos[i] = (Math.random() - 0.5) * 1500;
+        }
+        starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+        const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.2 });
+        const stars = new THREE.Points(starGeo, starMat);
+        scene.add(stars);
+
+        // Planets (Space Background)
+        const planetGroup = new THREE.Group();
+        scene.add(planetGroup);
+        
+        const planet1 = new THREE.Mesh(new THREE.SphereGeometry(200, 32, 32), new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0x331100 }));
+        planet1.position.set(-600, 300, -1500);
+        planetGroup.add(planet1);
+
+        const planet2 = new THREE.Mesh(new THREE.SphereGeometry(100, 32, 32), new THREE.MeshStandardMaterial({ color: 0x00aaff, emissive: 0x002244 }));
+        planet2.position.set(500, 400, -2000);
+        planetGroup.add(planet2);
+        
+        const planet3 = new THREE.Mesh(new THREE.SphereGeometry(300, 16, 16), new THREE.MeshStandardMaterial({ color: 0xaa00ff, wireframe: true }));
+        planet3.position.set(800, 100, -2500);
+        planetGroup.add(planet3);
+
+        const vehicleGroup = new THREE.Group();
+        scene.add(vehicleGroup);
+
+        const darkMetal = new THREE.MeshStandardMaterial({ color: 0x113311, metalness: 0.8, roughness: 0.3 }); // Dark green metallic body
+        const neonCyan = new THREE.MeshStandardMaterial({ color: 0x00ff44, emissive: 0x00ff44, emissiveIntensity: 2.5 }); // Primary neon green
+        const neonPink = new THREE.MeshStandardMaterial({ color: 0x88ff00, emissive: 0x88ff00, emissiveIntensity: 2.5 }); // Secondary yellow-green
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0x000000, metalness: 1.0, roughness: 0.0 });
+        const whiteGlow = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 3 });
+
+        const chassisGeo = new THREE.BoxGeometry(4.2, 0.6, 9);
+        const body = new THREE.Mesh(chassisGeo, darkMetal);
+        body.castShadow = true;
+        vehicleGroup.add(body);
+
+        const canopyGeo = new THREE.BoxGeometry(2.2, 1.0, 4);
+        const canopy = new THREE.Mesh(canopyGeo, glassMat);
+        canopy.position.set(0, 0.8, -0.5);
+        vehicleGroup.add(canopy);
+
+        // Side Trims
+        const trimGeo = new THREE.BoxGeometry(0.1, 0.1, 9.2);
+        const trimL = new THREE.Mesh(trimGeo, neonCyan);
+        trimL.position.set(-2.1, 0.3, 0);
+        vehicleGroup.add(trimL);
+        const trimR = new THREE.Mesh(trimGeo, neonCyan);
+        trimR.position.set(2.1, 0.3, 0);
+        vehicleGroup.add(trimR);
+
+        // Front Headlights
+        const headlightGeo = new THREE.BoxGeometry(3.6, 0.2, 0.2);
+        const headlights = new THREE.Mesh(headlightGeo, whiteGlow);
+        headlights.position.set(0, 0.3, -4.5);
+        vehicleGroup.add(headlights);
+        
+        // Hood Vents (Aggressive Details)
+        const ventGeo = new THREE.BoxGeometry(0.8, 0.2, 2);
+        const ventL = new THREE.Mesh(ventGeo, neonPink);
+        ventL.position.set(-1, 0.4, -2.5);
+        vehicleGroup.add(ventL);
+        const ventR = new THREE.Mesh(ventGeo, neonPink);
+        ventR.position.set(1, 0.4, -2.5);
+        vehicleGroup.add(ventR);
+
+        const wheelGeo = new THREE.TorusGeometry(0.9, 0.15, 16, 32);
+        const wheelPositions = [ [-2.4, 0, -2.8], [2.4, 0, -2.8], [-2.4, 0, 2.8], [2.4, 0, 2.8] ];
+        wheelPositions.forEach(pos => {
+            const wheel = new THREE.Mesh(wheelGeo, neonCyan);
+            wheel.position.set(...pos);
+            wheel.rotation.y = Math.PI / 2;
+            vehicleGroup.add(wheel);
+            
+            const rimGeo = new THREE.CylinderGeometry(0.8, 0.8, 0.4, 16);
+            const rim = new THREE.Mesh(rimGeo, darkMetal);
+            rim.rotation.z = Math.PI / 2;
+            rim.position.set(...pos);
+            vehicleGroup.add(rim);
+
+            const hubGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.45, 16);
+            const hub = new THREE.Mesh(hubGeo, neonPink);
+            hub.rotation.z = Math.PI / 2;
+            hub.position.set(...pos);
+            vehicleGroup.add(hub);
+        });
+
+        const spoilerGeo = new THREE.BoxGeometry(4.6, 0.2, 1.2);
+        const spoiler = new THREE.Mesh(spoilerGeo, darkMetal);
+        spoiler.position.set(0, 1.5, 4);
+        vehicleGroup.add(spoiler);
+        
+        const spoilerTrimGeo = new THREE.BoxGeometry(4.8, 0.1, 0.1);
+        const spoilerTrim = new THREE.Mesh(spoilerTrimGeo, neonPink);
+        spoilerTrim.position.set(0, 1.5, 4.6);
+        vehicleGroup.add(spoilerTrim);
+
+        const strutGeo = new THREE.BoxGeometry(0.2, 1.5, 0.5);
+        const strutL = new THREE.Mesh(strutGeo, darkMetal);
+        strutL.position.set(-1.5, 0.8, 4);
+        vehicleGroup.add(strutL);
+        const strutR = new THREE.Mesh(strutGeo, darkMetal);
+        strutR.position.set(1.5, 0.8, 4);
+        vehicleGroup.add(strutR);
+
+        // Exposed Glowing Engine Core
+        const engineCoreGeo = new THREE.BoxGeometry(2, 0.8, 1.5);
+        const engineCore = new THREE.Mesh(engineCoreGeo, whiteGlow);
+        engineCore.position.set(0, 0.5, 4.2);
+        vehicleGroup.add(engineCore);
+
+        const engineLight = new THREE.PointLight(0xffffff, 3, 30);
+        engineLight.position.set(0, 0, 5);
+        vehicleGroup.add(engineLight);
+        vehicleGroup.position.y = 2;
+
+        const particleCount = 100;
+        const particles = [];
+        const particleGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+        const particleMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, blending: THREE.AdditiveBlending });
+
+        for (let i = 0; i < particleCount; i++) {
+            const p = new THREE.Mesh(particleGeo, particleMat);
+            p.visible = false;
+            scene.add(p);
+            particles.push({ mesh: p, life: 0, maxLife: 20 });
+        }
+        let particleIndex = 0;
+
+        const obstacles = [];
+        const obsGeo = new THREE.BoxGeometry(1, 2, 1);
+        const obsRingGeo = new THREE.TorusGeometry(1.5, 0.15, 8, 24);
+        const obstacleMat = new THREE.MeshStandardMaterial({ color: 0xff0055, emissive: 0x550022 });
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0.8, wireframe: true });
+        
+        const rampGeo = new THREE.BoxGeometry(6, 1, 8);
+        const rampMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x005500, metalness: 0.8 });
+        
+        function spawnObstacle(startZ) {
+            if (state.gameOver) return;
+            const isRamp = Math.random() < 0.25; // 25% chance of a jump ramp
+            const size = Math.random() * 5 + 3;
+            const obsGroup = new THREE.Group();
+            
+            if (isRamp) {
+                const ramp = new THREE.Mesh(rampGeo, rampMat);
+                ramp.rotation.x = Math.PI / 8;
+                obsGroup.add(ramp);
+            } else {
+                const core = new THREE.Mesh(obsGeo, obstacleMat);
+                core.scale.set(size, size, size);
+                obsGroup.add(core);
+
+                const ring = new THREE.Mesh(obsRingGeo, ringMat);
+                ring.scale.set(size, size, size);
+                ring.rotation.x = Math.PI / 2;
+                obsGroup.add(ring);
+            }
+            
+            const zPos = typeof startZ === 'number' ? startZ : vehicleGroup.position.z - 500 - Math.random() * 400;
+            obsGroup.position.set((Math.random() - 0.5) * 80, isRamp ? 0.5 : size, zPos);
+            
+            scene.add(obsGroup);
+            obstacles.push({ mesh: obsGroup, isRamp: isRamp, size: size });
+        }
+
+        const state = {
+            velocity: new THREE.Vector3(),
+            maxSpeed: 100,
+            acceleration: 45,
+            friction: 0.92,
+            hoverHeight: 2,
+            score: 0,
+            gameOver: false,
+            baseSpeed: 0,
+            isJumping: false,
+            jumpTimer: 0
+        };
+
+        const keys = { w: false, a: false, s: false, d: false };
+        window.addEventListener('keydown', e => { 
+            if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; 
+            if(e.code === 'Space' && state.gameOver) {
+                restartGame();
+            }
+        });
+        window.addEventListener('keyup', e => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
+
+        // Hide cursor when clicking the game
+        document.body.addEventListener('click', (e) => {
+            if (e.target.id !== 'restart-btn' && !state.gameOver) {
+                document.body.requestPointerLock();
+            }
+        });
+
+        const scoreEl = document.getElementById('score-display');
+        const speedEl = document.getElementById('speed-display');
+        const gameOverEl = document.getElementById('game-over');
+        const finalScoreEl = document.getElementById('final-score');
+        const highScoreEl = document.getElementById('high-score');
+        let highScore = localStorage.getItem('neonHoverRacerHighScore') || 0;
+        
+        function restartGame() {
+            if (!state.gameOver) return;
+            document.body.requestPointerLock();
+            state.gameOver = false;
+            state.score = 0;
+            state.velocity.set(0,0,0);
+            state.baseSpeed = 0;
+            state.isJumping = false;
+            state.jumpTimer = 0;
+            state.hoverHeight = 2;
+            vehicleGroup.position.set(0, 5, 0);
+            vehicleGroup.rotation.set(0, 0, 0);
+            obstacles.forEach(o => scene.remove(o.mesh));
+            obstacles.length = 0;
+            ghostGroup.children.forEach(g => g.position.z = -300 - Math.random() * 1200);
+            gameOverEl.style.display = 'none';
+            for(let i=0; i<8; i++) spawnObstacle(-300 - (i * 120) - Math.random()*50);
+        }
+
+        document.getElementById('restart-btn').addEventListener('click', restartGame);
+
+        for(let i=0; i<8; i++) spawnObstacle(-300 - (i * 120) - Math.random()*50);
+
+        const clock = new THREE.Clock();
+        const idealCameraOffset = new THREE.Vector3(0, 14, 18); // Medium-high angle
+        const idealLookAt = new THREE.Vector3(0, 0, -10);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.1); 
+
+            if (!state.gameOver) {
+                let moveZ = 0, moveX = 0;
+                if (keys.w) moveZ -= 1;
+                if (keys.s) moveZ += 1;
+                if (keys.a) moveX -= 1;
+                if (keys.d) moveX += 1;
+
+                state.baseSpeed += dt * 2.5;
+                const currentMaxSpeed = state.maxSpeed + state.baseSpeed;
+
+                const acc = new THREE.Vector3(moveX, 0, moveZ).normalize().multiplyScalar(state.acceleration * dt);
+                state.velocity.add(acc);
+                state.velocity.multiplyScalar(state.friction);
+                if (state.velocity.length() > currentMaxSpeed * dt) state.velocity.setLength(currentMaxSpeed * dt);
+
+                state.velocity.z -= (15 + state.baseSpeed) * dt;
+                vehicleGroup.position.add(state.velocity);
+                
+                // JUMP ARC LOGIC
+                if (state.isJumping) {
+                    state.jumpTimer -= dt;
+                    const x = 1.0 - 2.0 * state.jumpTimer; 
+                    const height = 2 + (1.0 - x*x) * 15; // Max height 17 for a 1s jump
+                    state.hoverHeight = height;
+                    vehicleGroup.position.y = height; // Snap to height directly to bypass smooth damping
+                    if (state.jumpTimer <= 0) {
+                        state.isJumping = false;
+                        state.hoverHeight = 2;
+                    }
+                }
+
+                vehicleGroup.rotation.z += (-moveX * Math.PI / 4 - vehicleGroup.rotation.z) * (dt * 5);
+                
+                // Pitch up while jumping
+                const targetPitch = state.isJumping ? -Math.PI/6 : 0;
+                vehicleGroup.rotation.x += (targetPitch - vehicleGroup.rotation.x) * (dt * 3);
+                
+                if (!state.isJumping) {
+                    vehicleGroup.position.y += (state.hoverHeight - vehicleGroup.position.y) * (dt * 5);
+                }
+
+                const trackLimit = 42;
+                if (vehicleGroup.position.x > trackLimit) { vehicleGroup.position.x = trackLimit; state.velocity.x = 0; }
+                if (vehicleGroup.position.x < -trackLimit) { vehicleGroup.position.x = -trackLimit; state.velocity.x = 0; }
+
+                const zOffset = vehicleGroup.position.z;
+                gridHelper.position.z = zOffset - (zOffset % 100);
+                boundaryGroup.position.z = zOffset - (zOffset % 30); // Loop the spaced pillars
+                truckGroup.position.z = zOffset - (zOffset % 300); // Loop the alternating trucks perfectly
+                stars.position.z = zOffset - (zOffset % 500);
+                planetGroup.position.z = zOffset * 0.9; // Parallax effect
+                
+                // Animate and loop ghosts
+                ghostGroup.children.forEach((g, idx) => {
+                    g.position.y += Math.sin(Date.now() * 0.003 + idx) * 0.05; // Bobbing effect
+                    if (g.position.z > zOffset + 100) {
+                        g.position.z = zOffset - 1200 - Math.random() * 500; // Respawn far ahead
+                    }
+                });
+
+                dirLight.position.z = zOffset + 50;
+                dirLight.target.position.set(0, 0, zOffset);
+                
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    const obs = obstacles[i];
+                    if (!obs.isRamp) {
+                        obs.mesh.children[1].rotation.z += dt * 2;
+                    }
+                    
+                    // DISTANCE COLLISION
+                    const dist = vehicleGroup.position.distanceTo(obs.mesh.position);
+                    const hitRadius = obs.isRamp ? 5 : (obs.size + 2);
+                    
+                    if (dist < hitRadius) {
+                        if (obs.isRamp) {
+                            if (!state.isJumping) {
+                                state.isJumping = true;
+                                state.jumpTimer = 1.0;
+                                state.score += 50; // Bonus for jumping
+                            }
+                        } else {
+                            state.gameOver = true;
+                            
+                            const finalScore = Math.floor(state.score + Math.abs(vehicleGroup.position.z)/10);
+                            if (finalScore > highScore) {
+                                highScore = finalScore;
+                                localStorage.setItem('neonHoverRacerHighScore', highScore);
+                            }
+                            finalScoreEl.innerText = `SCORE: ${finalScore}`;
+                            highScoreEl.innerText = `HIGH SCORE: ${highScore}`;
+                            
+                            gameOverEl.style.display = 'flex';
+                        }
+                    }
+
+                    if (obs.mesh.position.z > vehicleGroup.position.z + 50) {
+                        scene.remove(obs.mesh);
+                        obstacles.splice(i, 1);
+                        spawnObstacle();
+                        state.score += 10;
+                    }
+                }
+
+                scoreEl.innerText = `SCORE: ${Math.floor(state.score + Math.abs(vehicleGroup.position.z)/10)}`;
+                speedEl.innerText = `SPEED: ${Math.floor(Math.abs(state.velocity.z) * 60)} KM/H`;
+
+                if (keys.w) {
+                    const p = particles[particleIndex];
+                    p.mesh.position.copy(vehicleGroup.position);
+                    p.mesh.position.z += 3.5;
+                    p.mesh.position.x += (Math.random() - 0.5) * 1.5;
+                    p.life = p.maxLife;
+                    p.mesh.visible = true;
+                    particleIndex = (particleIndex + 1) % particleCount;
+                }
+            }
+
+            particles.forEach(p => {
+                if (p.life > 0) {
+                    p.life -= dt * 60;
+                    p.mesh.position.z += dt * 10;
+                    p.mesh.scale.setScalar(Math.max(0.01, p.life / p.maxLife));
+                    p.mesh.material.opacity = p.life / p.maxLife;
+                    if (p.life <= 0) p.mesh.visible = false;
+                }
+            });
+
+            const targetCamPos = vehicleGroup.position.clone().add(idealCameraOffset);
+            if (!state.gameOver && Math.abs(state.velocity.z) > 0.5) {
+                const shake = (Math.abs(state.velocity.z) - 0.5) * 0.15;
+                targetCamPos.x += (Math.random() - 0.5) * shake;
+                targetCamPos.y += (Math.random() - 0.5) * shake;
+            }
+
+            const lerpSpeed = state.gameOver ? 0.05 : 0.1;
+            camera.position.lerp(targetCamPos, lerpSpeed);
+            
+            const targetLookAt = vehicleGroup.position.clone().add(idealLookAt);
+            const currentLookAt = new THREE.Vector3();
+            camera.getWorldDirection(currentLookAt);
+            currentLookAt.add(camera.position);
+            currentLookAt.lerp(targetLookAt, lerpSpeed);
+            camera.lookAt(currentLookAt);
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
