@@ -1,4 +1,6 @@
-# Neon Hover Racer
+# Neon Hover Racer 
+<img src="assets/logo.jpg" alt="Neon Hover Racer Logo" width="100"/>
+
 
 ## Features
 
