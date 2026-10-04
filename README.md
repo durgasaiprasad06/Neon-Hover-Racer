@@ -1,11 +1,5 @@
 # Neon Hover Racer
 
-<p align="center">
-  <img src="assets/logo.jpg" alt="Neon Hover Racer Logo" width="400"/>
-</p>
-
-A fast-paced, 3D endless hover racing game built with Three.js. Dodge obstacles, hit jump ramps, and speed through a neon-lit cyberpunk universe to get the highest score!
-
 ## Features
 
 - **3D Graphics:** Built with Three.js, featuring a synthwave aesthetic with neon lights and a dynamic space background.
